@@ -5,7 +5,6 @@ import { SubstanceType, UnitSystem } from '../types';
 import { UnifiedParticleSim, DeviceSchematic } from './VisualComponents';
 import { convertInput, formatEnergy, formatPressure, formatTemp } from '../utils/conversions';
 import UnitInput from '../components/UnitInput';
-import Tooltip from '../components/Tooltip';
 
 type DeviceType = 'turbine' | 'compressor' | 'pump' | 'nozzle' | 'valve' | 'heat_exchanger';
 
@@ -17,11 +16,10 @@ const SteadyFlow: React.FC<{ units: UnitSystem }> = ({ units }) => {
   const [dispP2, setDispP2] = useState(100);
   const [eff, setEff] = useState(0.85);
   
-  // KE/PE Toggles
   const [keEnabled, setKeEnabled] = useState(false);
   const [peEnabled, setPeEnabled] = useState(false);
   const [v1, setV1] = useState(0);
-  const [v2, setV2] = useState(0);
+  const [v2, setV2] = useState(100);
   const [z1, setZ1] = useState(0);
   const [z2, setZ2] = useState(0);
   
@@ -42,35 +40,31 @@ const SteadyFlow: React.FC<{ units: UnitSystem }> = ({ units }) => {
 
     switch(device) {
       case 'turbine':
-        const h2s_turb = s1.h * 0.7; 
-        const w_s = s1.h - h2s_turb;
-        w = eff * w_s;
-        const h2_turb = s1.h - w - deltaKe - deltaPe;
-        T2 = T1 + (h2_turb - s1.h) / cp;
-        equation = "w = (h₁ - h₂) - Δke - Δpe";
+        const w_isentropic = cp * T1 * (1 - Math.pow(P2 / P1, 0.285)); 
+        w = eff * w_isentropic;
+        T2 = T1 - w / cp;
+        equation = "w = η·(h₁ - h₂s)";
         break;
       case 'compressor':
       case 'pump':
-        const w_ideal = s1.v * (P2 - P1) + deltaKe + deltaPe;
-        w = -(w_ideal / eff);
-        const h2_comp = s1.h - w - deltaKe - deltaPe;
-        T2 = T1 + (h2_comp - s1.h) / cp;
-        equation = "w = (h₁ - h₂) - Δke - Δpe";
+        const w_c_isentropic = cp * T1 * (Math.pow(P2 / P1, 0.285) - 1);
+        w = -(w_c_isentropic / eff);
+        T2 = T1 - w / cp;
+        equation = "w = (h₁ - h₂s)/η";
         break;
       case 'nozzle':
         const h2_nozzle = s1.h - deltaKe - deltaPe;
         T2 = T1 + (h2_nozzle - s1.h) / cp;
-        equation = "V₂ = √[2(h₁ - h₂ + V₁²/2)]";
+        equation = "V₂ = √[2·(h₁-h₂)]";
         break;
       case 'valve':
         T2 = T1; 
         equation = "h₁ = h₂ (Isenthalpic)";
         break;
       case 'heat_exchanger':
-        T2 = T1 + 20; 
-        const h2_he = substance === SubstanceType.WATER ? calculateWaterState(P2, T2).h : calculateIdealGasState(P2, T2).h;
-        q = (h2_he - s1.h) + deltaKe + deltaPe;
-        equation = "q = (h₂ - h₁) + Δke + Δpe";
+        T2 = T1 + 25; 
+        q = cp * (T2 - T1) + deltaKe + deltaPe;
+        equation = "q = Δh + Δke + Δpe";
         break;
     }
 
@@ -80,7 +74,6 @@ const SteadyFlow: React.FC<{ units: UnitSystem }> = ({ units }) => {
 
   return (
     <div className="space-y-10 animate-fade-in pb-20">
-      {/* EDUCATIONAL HEADER */}
       <section className="bg-indigo-900 p-12 rounded-[3rem] text-white shadow-xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-1/3 h-full bg-teal-500/10 pointer-events-none"></div>
         <div className="relative z-10 max-w-4xl">
@@ -90,8 +83,7 @@ const SteadyFlow: React.FC<{ units: UnitSystem }> = ({ units }) => {
            <h2 className="text-4xl font-black mb-4 tracking-tight uppercase italic">Steady-Flow Systems</h2>
            <p className="text-slate-300 text-lg leading-relaxed font-medium">
              Unlike closed systems, <strong>Steady-Flow Devices</strong> have fluid entering and leaving at a constant rate. 
-             {/* Fix: Escaped LaTeX-style curly braces to prevent "Cannot find name 'V'" error which occurs when curly braces are misinterpreted as JSX expressions */}
-             The <strong>First Law for Open Systems</strong> includes flow work via <strong>Enthalpy (h)</strong> and potential shifts in kinetic {"($\\frac{V^2}{2}$)"} or potential {"($gz$)"} energy.
+             The <strong>First Law for Open Systems</strong> accounts for Enthalpy and Kinetic/Potential shifts.
            </p>
         </div>
       </section>
@@ -105,40 +97,44 @@ const SteadyFlow: React.FC<{ units: UnitSystem }> = ({ units }) => {
                 <DeviceBtn active={device === 'compressor'} onClick={() => setDevice('compressor')} icon="fa-compress-arrows-alt" label="Compressor" />
                 <DeviceBtn active={device === 'pump'} onClick={() => setDevice('pump')} icon="fa-faucet" label="Pump" />
                 <DeviceBtn active={device === 'nozzle'} onClick={() => setDevice('nozzle')} icon="fa-caret-right" label="Nozzle" />
-                <DeviceBtn active={device === 'valve'} onClick={() => setDevice('valve')} icon="fa-vial-circle-check" label="Valve" />
+                <DeviceBtn active={device === 'valve'} onClick={() => setDevice('valve')} icon="fa-vial-circle-check" label="Throttling" />
                 <DeviceBtn active={device === 'heat_exchanger'} onClick={() => setDevice('heat_exchanger')} icon="fa-fire-burner" label="Exchanger" />
              </div>
 
              <div className="space-y-6">
-                <UnitInput label="Inlet P" value={dispP1} onChange={setDispP1} unit={isSI ? 'kPa' : 'psi'} onUnitChange={()=>{}} options={['kPa']} />
-                <UnitInput label="Inlet T" value={dispT1} onChange={setDispT1} unit={isSI ? '°C' : '°F'} onUnitChange={()=>{}} options={['°C']} />
-                <UnitInput label="Exit P" value={dispP2} onChange={setDispP2} unit={isSI ? 'kPa' : 'psi'} onUnitChange={()=>{}} options={['kPa']} />
-
-                <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Physics Toggles</label>
-                    <div className="flex gap-2">
-                       <ToggleBtn active={keEnabled} onClick={() => setKeEnabled(!keEnabled)} label="KE" />
-                       <ToggleBtn active={peEnabled} onClick={() => setPeEnabled(!peEnabled)} label="PE" />
-                    </div>
-                  </div>
-                  {keEnabled && (
-                    <div className="grid grid-cols-2 gap-3 animate-fade-in">
-                       <input type="number" placeholder="V1 (m/s)" value={v1} onChange={e => setV1(Number(e.target.value))} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold" />
-                       <input type="number" placeholder="V2 (m/s)" value={v2} onChange={e => setV2(Number(e.target.value))} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold" />
-                    </div>
-                  )}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Working Species</label>
+                  <select value={substance} onChange={e => setSubstance(e.target.value as any)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 text-sm font-bold outline-none cursor-pointer">
+                     <option value={SubstanceType.WATER}>Water / Steam</option>
+                     <option value={SubstanceType.AIR}>Dry Air</option>
+                  </select>
                 </div>
+                
+                <UnitInput label="Inlet P" value={dispP1} onChange={setDispP1} unit={isSI ? 'kPa' : 'psi'} onUnitChange={()=>{}} options={isSI ? ['kPa'] : ['psi']} />
+                <UnitInput label="Inlet T" value={dispT1} onChange={setDispT1} unit={isSI ? '°C' : '°F'} onUnitChange={()=>{}} options={isSI ? ['°C'] : ['°F']} />
+                <UnitInput label="Exit P" value={dispP2} onChange={setDispP2} unit={isSI ? 'kPa' : 'psi'} onUnitChange={()=>{}} options={isSI ? ['kPa'] : ['psi']} />
+
+                {['turbine', 'compressor', 'pump'].includes(device) && (
+                  <div className="space-y-2 pt-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Isentropic Efficiency (η)</label>
+                    <input type="range" min="0.5" max="1" step="0.01" value={eff} onChange={e => setEff(Number(e.target.value))} className="w-full h-1.5 bg-slate-100 rounded-full accent-indigo-600 cursor-pointer" />
+                    <div className="text-right text-[10px] font-black text-indigo-600">{(eff * 100).toFixed(0)}%</div>
+                  </div>
+                )}
              </div>
           </section>
 
           <section className="bg-slate-900 p-10 rounded-[3rem] shadow-2xl text-white">
             <h4 className="text-[10px] font-black text-teal-400 uppercase tracking-widest mb-10 border-b border-white/5 pb-4">Audit Results</h4>
             <div className="space-y-6">
-               <ResultRow label="Exit Temperature" value={formatTemp(results.s2.T, units)} />
-               <ResultRow label="Work Produced" value={`${results.w.toFixed(1)} kJ/kg`} color="text-indigo-400" />
+               <ResultRow label="Exit Temp (T2)" value={formatTemp(results.s2.T, units)} />
+               <ResultRow 
+                 label={results.w >= 0 ? "Work Produced (w)" : "Work Consumed (w)"} 
+                 value={`${Math.abs(results.w).toFixed(1)} kJ/kg`} 
+                 color={results.w >= 0 ? "text-indigo-400" : "text-rose-400"} 
+               />
                <div className="pt-6 border-t border-white/5">
-                  <p className="text-[9px] font-black text-slate-500 uppercase mb-2">Governing Rule</p>
+                  <p className="text-[9px] font-black text-slate-500 uppercase mb-2">Governing Balance</p>
                   <p className="text-xl font-mono font-black italic tracking-tighter text-indigo-300 uppercase">{results.equation}</p>
                </div>
             </div>
@@ -149,8 +145,8 @@ const SteadyFlow: React.FC<{ units: UnitSystem }> = ({ units }) => {
            <div className="bg-white p-12 rounded-[4rem] border border-slate-100 shadow-sm flex flex-col items-center justify-center min-h-[700px] relative overflow-hidden">
               <div className="w-full flex justify-around items-center mb-16 relative z-10">
                  <div className="text-center">
-                    <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.3em] mb-4">Inlet</p>
-                    <div className="w-44 h-44 rounded-[2.5rem] overflow-hidden border border-slate-100">
+                    <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.3em] mb-4">Inlet State</p>
+                    <div className="w-44 h-44 rounded-[2.5rem] overflow-hidden border border-slate-100 bg-slate-900 shadow-lg">
                        <UnifiedParticleSim temperature={results.s1.T} density={0.3} height={176} substanceA={substance} />
                     </div>
                  </div>
@@ -158,8 +154,8 @@ const SteadyFlow: React.FC<{ units: UnitSystem }> = ({ units }) => {
                     <DeviceSchematic type={device} color="#4f46e5" />
                  </div>
                  <div className="text-center">
-                    <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.3em] mb-4">Outlet</p>
-                    <div className="w-44 h-44 rounded-[2.5rem] overflow-hidden border border-slate-100">
+                    <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.3em] mb-4">Outlet State</p>
+                    <div className="w-44 h-44 rounded-[2.5rem] overflow-hidden border border-slate-100 bg-slate-900 shadow-lg">
                        <UnifiedParticleSim temperature={results.s2.T} density={0.15} height={176} substanceA={substance} />
                     </div>
                  </div>
@@ -169,12 +165,12 @@ const SteadyFlow: React.FC<{ units: UnitSystem }> = ({ units }) => {
                  <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Device Specifications</h5>
                  <div className="grid grid-cols-2 gap-8">
                     <div className="space-y-4">
-                       <PropBadge label="h₁ (Enthalpy)" value={formatEnergy(results.s1.h, units)} />
-                       <PropBadge label="P₁" value={formatPressure(results.s1.P, units)} />
+                       <PropBadge label="h₁ (In)" value={formatEnergy(results.s1.h, units)} />
+                       <PropBadge label="P₁ (In)" value={formatPressure(results.s1.P, units)} />
                     </div>
                     <div className="space-y-4">
-                       <PropBadge label="h₂ (Enthalpy)" value={formatEnergy(results.s2.h, units)} highlight />
-                       <PropBadge label="P₂" value={formatPressure(results.s2.P, units)} />
+                       <PropBadge label="h₂ (Out)" value={formatEnergy(results.s2.h, units)} highlight />
+                       <PropBadge label="P₂ (Out)" value={formatPressure(results.s2.P, units)} />
                     </div>
                  </div>
               </div>
@@ -186,15 +182,9 @@ const SteadyFlow: React.FC<{ units: UnitSystem }> = ({ units }) => {
 };
 
 const DeviceBtn = ({ active, onClick, icon, label }: any) => (
-  <button onClick={onClick} className={`w-full flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all ${active ? 'bg-indigo-600 text-white border-transparent shadow-lg scale-105' : 'bg-slate-50 text-slate-400 border-slate-100 hover:border-teal-200'}`}>
+  <button onClick={onClick} className={`w-full flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all ${active ? 'bg-indigo-600 text-white border-transparent shadow-lg scale-105' : 'bg-slate-50 text-slate-400 border-slate-100 hover:border-teal-200 hover:text-slate-600'}`}>
     <i className={`fas ${icon} text-lg`}></i>
     <span className="text-[8px] font-black uppercase tracking-widest text-center leading-none">{label}</span>
-  </button>
-);
-
-const ToggleBtn = ({ active, onClick, label }: any) => (
-  <button onClick={onClick} className={`px-2.5 py-1 rounded-lg text-[8px] font-black uppercase border transition-all ${active ? 'bg-slate-900 text-white' : 'bg-white text-slate-400 border-slate-200'}`}>
-    {label}
   </button>
 );
 

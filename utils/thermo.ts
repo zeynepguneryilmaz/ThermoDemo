@@ -1,9 +1,9 @@
 
-import { STEAM_SAT_TABLE, R_AIR, CP_AIR } from '../constants';
+import { STEAM_SAT_TABLE, R_AIR, CP_AIR, CV_AIR } from '../constants';
 import { ThermoState, EOSModel } from '../types';
 
 export const lerp = (x: number, x1: number, x2: number, y1: number, y2: number) => {
-  if (x1 === x2) return y1;
+  if (Math.abs(x1 - x2) < 1e-9) return y1;
   return y1 + (x - x1) * (y2 - y1) / (x2 - x1);
 };
 
@@ -15,63 +15,81 @@ export const mmHgToKPa = (mmHg: number) => {
   return mmHg * (101.325 / 760);
 };
 
-// Fix: Added calculateIdealGasState to resolve "Module '../utils/thermo' has no exported member 'calculateIdealGasState'" errors.
 /**
  * Calculates state properties for an Ideal Gas.
+ * Uses reference state T=298.15K, P=101.325kPa
  */
 export const calculateIdealGasState = (P: number, T: number, R = R_AIR, Cp = CP_AIR): ThermoState => {
-  const v = (R * T) / Math.max(P, 0.0001);
+  const v = (R * T) / Math.max(P, 0.1);
   const Cv = Cp - R;
-  const u = Cv * T;
-  const h = Cp * T;
-  // entropy relative to T=1K, P=1kPa
-  const s = Cp * Math.log(Math.max(T, 0.001)) - R * Math.log(Math.max(P, 0.001));
+  const T_ref = 298.15;
+  const P_ref = 101.325;
+  
+  const u = Cv * (T - T_ref);
+  const h = Cp * (T - T_ref);
+  // s = Cp*ln(T/Tref) - R*ln(P/Pref)
+  const s = Cp * Math.log(Math.max(T, 1) / T_ref) - R * Math.log(Math.max(P, 0.1) / P_ref);
+  
   return { P, T, v, u, h, s, z: 1.0, phase: 'Ideal Gas' };
 };
 
+/**
+ * Peng-Robinson EOS Solver
+ * Solves Z^3 - (1-B)Z^2 + (A - 3B^2 - 2B)Z - (AB - B^2 - B^3) = 0
+ */
 export const calculateStateWithEOS = (
   P: number, 
   T: number, 
   model: EOSModel, 
   substance: any,
-  R = 0.4615
+  R_val = 0.4615
 ): ThermoState => {
   if (model === EOSModel.IDEAL) {
-    const v = (R * T) / P;
-    return { P, T, v, u: 0, h: 0, s: 0, z: 1.0, phase: 'Ideal Gas' };
+    return calculateIdealGasState(P, T, R_val);
   }
 
-  // Peng-Robinson Simplified Implementation
   const { Pc, Tc, omega } = substance;
   const Tr = T / Tc;
   const Pr = P / Pc;
-  const alpha = Math.pow(1 + (0.37464 + 1.54226 * omega - 0.26992 * omega * omega) * (1 - Math.sqrt(Tr)), 2);
-  const a = 0.45724 * (R * R * Tc * Tc) / Pc * alpha;
-  const b = 0.0778 * (R * Tc) / Pc;
+  
+  // PR Parameters
+  const kappa = 0.37464 + 1.54226 * omega - 0.26992 * omega * omega;
+  const alpha = Math.pow(1 + kappa * (1 - Math.sqrt(Tr)), 2);
+  const a = 0.45724 * (R_val * R_val * Tc * Tc) / Pc * alpha;
+  const b = 0.07780 * (R_val * Tc) / Pc;
 
-  const A = (a * P) / (R * R * T * T);
-  const B = (b * P) / (R * T);
+  const A = (a * P) / (R_val * R_val * T * T);
+  const B = (b * P) / (R_val * T);
 
-  // Solve cubic for Z: Z^3 - (1-B)Z^2 + (A - 3B^2 - 2B)Z - (AB - B^2 - B^3) = 0
-  // Simplified: Returning an approximate Z for visualization purposes
-  const z = 1 + B - A * B / (1 + B); 
-  const v = (z * R * T) / P;
+  // Cubic coefficients for Z
+  const c2 = B - 1;
+  const c1 = A - 3 * B * B - 2 * B;
+  const c0 = B * B * B + B * B - A * B;
 
-  // Fugacity Coefficient (phi) approximation
-  const phi = Math.exp(z - 1 - Math.log(Math.max(z - B, 0.0001)) - (A / (2 * Math.sqrt(2) * B)) * Math.log((z + (1 + Math.sqrt(2)) * B) / (z + (1 - Math.sqrt(2)) * B)));
+  // Solving cubic using a simple Newton-Raphson for the largest root (vapor) or smallest (liquid)
+  let z = 1.0; 
+  for (let i = 0; i < 10; i++) {
+    const f = z * z * z + c2 * z * z + c1 * z + c0;
+    const df = 3 * z * z + 2 * c2 * z + c1;
+    z = z - f / df;
+  }
+
+  const v = (z * R_val * T) / P;
+  const phase = z < 0.3 ? 'Liquid Region' : z > 0.7 ? 'Vapor Region' : 'Supercritical';
 
   return { 
     P, T, v, u: 0, h: 0, s: 0, z, 
-    phi, f: P * phi,
-    phase: z < 0.5 ? 'Liquid' : 'Vapor'
+    phase 
   };
 };
 
 export const getWaterSat = (key: 'T' | 'P', val: number) => {
   const table = STEAM_SAT_TABLE;
+  const lookupVal = key === 'T' ? Math.max(0.01, Math.min(val, 374)) : Math.max(0.6117, Math.min(val, 22060));
+  
   let i = 0;
-  const lookupVal = key === 'T' ? (val > 374 ? 374 : val) : (val > 22060 ? 22060 : val);
   while (i < table.length - 1 && table[i+1][key] < lookupVal) i++;
+  
   const row1 = table[i];
   const row2 = table[i+1] || table[i];
   const x1 = row1[key];
@@ -90,20 +108,29 @@ export const getWaterSat = (key: 'T' | 'P', val: number) => {
 };
 
 export const calculateWaterState = (P?: number, T?: number, x?: number): ThermoState => {
-  if (x !== undefined && (P !== undefined || T !== undefined)) {
+  // Quality-based lookup
+  if (x !== undefined) {
     const sat = getWaterSat(P !== undefined ? 'P' : 'T', P !== undefined ? P : (T || 0) - 273.15);
     const v = sat.vf + x * (sat.vg - sat.vf);
     const h = sat.hf + x * (sat.hg - sat.hf);
     const s = sat.sf + x * (sat.sg - sat.sf);
-    return { P: sat.P, T: sat.T + 273.15, v, u: h - sat.P * v, h, s, x, phase: 'Mixture' };
+    return { P: sat.P, T: sat.T + 273.15, v, u: h - sat.P * v, h, s, x, phase: 'Saturated Mixture' };
   }
+
   const PK = P || 101.325;
   const TK = T || 373.15;
   const sat = getWaterSat('P', PK);
   const TC = TK - 273.15;
-  if (TC > sat.T) {
-    return { P: PK, T: TK, v: (0.4615 * TK) / PK, u: 2500, h: 2675, s: 7.3, phase: 'Superheated' };
+
+  if (TC > sat.T + 0.1) {
+    // Superheated approximation
+    const v = (0.4615 * TK) / PK;
+    return { P: PK, T: TK, v, u: 2500 + 1.5 * TC, h: 2675 + 2.0 * TC, s: sat.sg + 0.005 * (TC - sat.T), phase: 'Superheated' };
+  } else if (TC < sat.T - 0.1) {
+    // Compressed Liquid approximation
+    return { P: PK, T: TK, v: 0.001, u: 4.18 * TC, h: 4.18 * TC + PK * 0.001, s: 4.18 * Math.log(TK / 273.15), phase: 'Compressed Liquid' };
   } else {
-    return { P: PK, T: TK, v: 0.001, u: 400, h: 419, s: 1.3, phase: 'Compressed Liquid' };
+    // Exactly at saturation
+    return { P: PK, T: sat.T + 273.15, v: sat.vf, u: sat.hf, h: sat.hf, s: sat.sf, x: 0, phase: 'Saturated Liquid' };
   }
 };

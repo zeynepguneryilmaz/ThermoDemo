@@ -18,7 +18,7 @@ const Home: React.FC = () => {
             Thermal <span className="text-teal-400">Simulation.</span>
           </h1>
           <p className="text-lg text-slate-300 leading-relaxed font-medium max-w-2xl">
-            A high-fidelity academic environment for visualizing physical properties, solving complex energy balances, and exploring chemical solution thermodynamics.
+            A precise academic environment for visualizing physical properties, solving complex energy balances, and exploring chemical solution thermodynamics through rigorous computation.
           </p>
         </div>
       </section>
@@ -28,7 +28,7 @@ const Home: React.FC = () => {
         <StatTile label="Physics Modules" value="10" icon="fa-cubes-stacked" />
         <StatTile label="Principles" value="100+" icon="fa-book-bookmark" />
         <StatTile label="EOS Models" value="3" icon="fa-flask-vial" />
-        <StatTile label="Fidelity" value="High" icon="fa-bullseye" />
+        <StatTile label="Calculations" value="Rigorous" icon="fa-bullseye" />
       </div>
 
       {/* Main Feature Grid */}
@@ -102,10 +102,7 @@ const FeatureBox = ({ icon, title, desc, color }: any) => (
       <i className={`fas ${icon} text-lg`}></i>
     </div>
     <h3 className="text-xl font-bold text-slate-900 mb-4 tracking-tight">{title}</h3>
-    <p className="text-slate-500 text-sm leading-relaxed font-medium mb-8">{desc}</p>
-    <button className="text-[10px] font-black uppercase text-teal-600 tracking-widest flex items-center gap-2 group-hover:translate-x-1 transition-transform">
-      Learn More <i className="fas fa-arrow-right"></i>
-    </button>
+    <p className="text-slate-500 text-sm leading-relaxed font-medium">{desc}</p>
   </div>
 );
 

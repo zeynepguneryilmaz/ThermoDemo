@@ -18,25 +18,38 @@ const FirstLaw: React.FC<{ convention: WorkConvention; units: UnitSystem }> = ({
   const isSI = units === UnitSystem.SI;
 
   const results = useMemo(() => {
+    // 1. Convert inputs to SI Base for calculation
     const m = convertInput(dispM, 'M', units);
     const P1 = convertInput(dispP1, 'P', units);
     const T1 = convertInput(dispT1, 'T', units);
     const P2 = convertInput(dispP2, 'P', units);
 
+    // 2. Fetch Initial State
     const s1 = substance === SubstanceType.WATER ? calculateWaterState(P1, T1) : calculateIdealGasState(P1, T1);
+    
+    // 3. Determine Final State based on process constraint
     let T2 = T1;
     let P_final = P2;
 
-    if (process === 'isothermal') { T2 = T1; P_final = P2; } 
-    else if (process === 'isobaric') { P_final = P1; T2 = T1 * (P2 / P1); } 
-    else if (process === 'isochoric') { P_final = P2; T2 = T1 * (P2 / P1); }
+    if (process === 'isothermal') { 
+      T2 = T1; 
+      P_final = P2; 
+    } else if (process === 'isobaric') { 
+      P_final = P1; 
+      T2 = T1 * (P2 / P1); // Charles's Law approximation for visualization
+    } else if (process === 'isochoric') { 
+      P_final = P2; 
+      T2 = T1 * (P2 / P1); // Gay-Lussac's Law
+    }
 
     const s2 = substance === SubstanceType.WATER ? calculateWaterState(P_final, T2) : calculateIdealGasState(P_final, T2);
-    const dU = m * (s2.u - s1.u);
     
+    // 4. Calculate Energies
+    const dU = m * (s2.u - s1.u);
     let W_out = 0;
+    const R = substance === SubstanceType.WATER ? 0.4615 : 0.287; // Gas constant in kJ/kg-K
+
     if (process === 'isothermal') {
-      const R = substance === SubstanceType.WATER ? 0.4615 : 0.287;
       W_out = m * R * T1 * Math.log(s2.v / s1.v);
     } else if (process === 'isobaric') {
       W_out = P1 * m * (s2.v - s1.v);
@@ -44,6 +57,7 @@ const FirstLaw: React.FC<{ convention: WorkConvention; units: UnitSystem }> = ({
       W_out = 0;
     }
     
+    // Apply Sign Convention
     const isEngineering = convention === WorkConvention.BY_SYSTEM;
     const W_display = isEngineering ? W_out : -W_out;
     const Q = dU + W_out; 
@@ -53,7 +67,6 @@ const FirstLaw: React.FC<{ convention: WorkConvention; units: UnitSystem }> = ({
 
   return (
     <div className="space-y-10 animate-fade-in pb-20">
-      {/* Educational Header */}
       <section className="bg-indigo-900 p-12 rounded-[3rem] text-white shadow-xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-1/3 h-full bg-teal-500/10 pointer-events-none"></div>
         <div className="relative z-10 max-w-4xl">
@@ -62,7 +75,7 @@ const FirstLaw: React.FC<{ convention: WorkConvention; units: UnitSystem }> = ({
            </div>
            <h2 className="text-4xl font-black mb-4 tracking-tight uppercase italic">Closed System Energy Balances</h2>
            <p className="text-slate-300 text-lg leading-relaxed font-medium">
-             Apply the <strong>First Law of Thermodynamics</strong> ($Q - W = \Delta U$) to a fixed mass of fluid. Observe how different constraints (Constant Pressure, Volume, or Temperature) change the distribution of heat and work.
+             Apply the <strong>First Law of Thermodynamics</strong> ({"$Q - W = \\Delta U$"}) to a fixed mass. Observe how different constraints (Constant Pressure, Volume, or Temperature) change the distribution of heat and work.
            </p>
         </div>
       </section>
@@ -72,11 +85,19 @@ const FirstLaw: React.FC<{ convention: WorkConvention; units: UnitSystem }> = ({
           <section className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-8">
             <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Process Configuration</h3>
             <div className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Working Fluid</label>
+                <div className="flex bg-slate-100 p-1 rounded-2xl">
+                   <button onClick={() => setSubstance(SubstanceType.AIR)} className={`flex-1 py-2 text-[10px] font-black rounded-xl transition-all ${substance === SubstanceType.AIR ? 'bg-white shadow-md text-indigo-600' : 'text-slate-400'}`}>AIR</button>
+                   <button onClick={() => setSubstance(SubstanceType.WATER)} className={`flex-1 py-2 text-[10px] font-black rounded-xl transition-all ${substance === SubstanceType.WATER ? 'bg-white shadow-md text-indigo-600' : 'text-slate-400'}`}>STEAM</button>
+                </div>
+              </div>
+
               <UnitInput label="System Mass" value={dispM} onChange={setDispM} unit={isSI ? 'kg' : 'lbm'} onUnitChange={()=>{}} options={[isSI ? 'kg' : 'lbm']} />
               
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Process Constraint</label>
-                <select value={process} onChange={e => setProcess(e.target.value as any)} className="w-full border border-slate-200 rounded-2xl px-5 py-3 text-sm font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-teal-500/10">
+                <select value={process} onChange={e => setProcess(e.target.value as any)} className="w-full border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-teal-500/10">
                   <option value="isothermal">Isothermal (T = const)</option>
                   <option value="isobaric">Isobaric (P = const)</option>
                   <option value="isochoric">Isochoric (V = const)</option>
@@ -86,7 +107,7 @@ const FirstLaw: React.FC<{ convention: WorkConvention; units: UnitSystem }> = ({
               <div className="grid grid-cols-1 gap-6 pt-4 border-t border-slate-50">
                  <UnitInput label="Inlet P (P1)" value={dispP1} onChange={setDispP1} unit={isSI ? 'kPa' : 'psi'} onUnitChange={()=>{}} options={['kPa']} />
                  <UnitInput label="Inlet T (T1)" value={dispT1} onChange={setDispT1} unit={isSI ? '°C' : '°F'} onUnitChange={()=>{}} options={['°C']} />
-                 <UnitInput label="Exit P (P2)" value={dispP2} onChange={setDispP2} unit={isSI ? 'kPa' : 'psi'} onUnitChange={()=>{}} options={['kPa']} />
+                 <UnitInput label="Target Exit P (P2)" value={dispP2} onChange={setDispP2} unit={isSI ? 'kPa' : 'psi'} onUnitChange={()=>{}} options={['kPa']} />
               </div>
             </div>
           </section>
@@ -94,9 +115,23 @@ const FirstLaw: React.FC<{ convention: WorkConvention; units: UnitSystem }> = ({
           <section className="bg-slate-900 p-10 rounded-[2.5rem] shadow-xl text-white">
             <h4 className="text-[10px] font-black text-teal-400 uppercase tracking-[0.3em] mb-8 border-b border-white/5 pb-4">Energy Solution Audit</h4>
             <div className="space-y-1">
-               <Row label="Internal Energy ΔU" value={formatTotalEnergy(results.dU, units)} />
-               <Row label="Heat Transfer (Q)" value={formatTotalEnergy(results.Q, units)} color={results.Q >= 0 ? 'text-teal-400' : 'text-rose-400'} />
-               <Row label="Work Produced (W)" value={formatTotalEnergy(results.W, units)} color={results.W >= 0 ? 'text-indigo-400' : 'text-rose-400'} />
+               <Row label="Int. Energy ΔU" value={formatTotalEnergy(results.dU, units)} />
+               <Row 
+                  label={`Heat Transfer (${results.Q >= 0 ? 'In' : 'Out'})`} 
+                  value={formatTotalEnergy(results.Q, units)} 
+                  color={results.Q >= 0 ? 'text-teal-400' : 'text-rose-400'} 
+               />
+               <Row 
+                  label={`Work (${results.W >= 0 ? 'Out' : 'In'})`} 
+                  value={formatTotalEnergy(results.W, units)} 
+                  color={results.W >= 0 ? 'text-indigo-400' : 'text-rose-400'} 
+               />
+               <div className="pt-4 mt-4 border-t border-white/5">
+                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Physics Logic</p>
+                  <p className="text-[11px] font-bold text-slate-300 italic">
+                    {convention === WorkConvention.BY_SYSTEM ? 'Q - W = ΔU (Engineering Convention)' : 'Q + W = ΔU (Chemistry Convention)'}
+                  </p>
+               </div>
             </div>
           </section>
         </div>

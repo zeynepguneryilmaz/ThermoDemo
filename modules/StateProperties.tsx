@@ -17,25 +17,26 @@ const StateProperties: React.FC<{ units: UnitSystem }> = ({ units }) => {
 
   const state = useMemo(() => {
     try {
-      if (substance === 'Water') return calculateWaterState(p, t);
-      return calculateStateWithEOS(p, t, model, ANTOINE_DB[substance]);
+      if (substance === 'Water' && model === EOSModel.IDEAL) return calculateWaterState(p, t);
+      const fluidData = ANTOINE_DB[substance];
+      return calculateStateWithEOS(p, t, model, fluidData);
     } catch (e) {
+      console.error("Calculation Error:", e);
       return calculateWaterState(101.325, 373.15);
     }
   }, [substance, model, p, t]);
 
   return (
     <div className="space-y-10 animate-fade-in pb-20">
-      {/* Educational Header */}
       <section className="bg-indigo-900 p-12 rounded-[3rem] text-white shadow-xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-1/3 h-full bg-teal-500/10 pointer-events-none"></div>
         <div className="relative z-10 max-w-4xl">
            <div className="inline-flex items-center gap-3 px-4 py-1.5 bg-white/10 rounded-full border border-white/10 mb-6 text-teal-300 text-[10px] font-black uppercase tracking-widest">
-              <i className="fas fa-graduation-cap"></i> Fluid Physics
+              <i className="fas fa-atom"></i> Micro-Macro Interface
            </div>
-           <h2 className="text-4xl font-black mb-4 tracking-tight uppercase italic">Fluid Properties & EOS</h2>
+           <h2 className="text-4xl font-black mb-4 tracking-tight uppercase italic">Equation of State (EOS)</h2>
            <p className="text-slate-300 text-lg leading-relaxed font-medium">
-             Understand how substances behave under different pressures and temperatures. Use the <strong>Ideal Gas Law</strong> for low-density approximations or <strong>Peng-Robinson (EOS)</strong> for rigorous real-gas modeling near critical points.
+             Investigate deviations from ideal behavior. The <strong>Compressibility Factor (Z)</strong> measures how much a real gas differs from PV=RT. Near the critical point, cubic models like <strong>Peng-Robinson</strong> are essential.
            </p>
         </div>
       </section>
@@ -46,34 +47,55 @@ const StateProperties: React.FC<{ units: UnitSystem }> = ({ units }) => {
             <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Input Controls</h3>
             
             <div className="space-y-4">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Working Species</label>
-              <select value={substance} onChange={e => setSubstance(e.target.value)} className="w-full border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-teal-500/10 transition-all">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Working Fluid</label>
+              <select 
+                value={substance} 
+                onChange={e => setSubstance(e.target.value)} 
+                className="w-full border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-teal-500/10 transition-all cursor-pointer"
+              >
                 {Object.keys(ANTOINE_DB).map(k => <option key={k} value={k}>{k}</option>)}
               </select>
             </div>
 
             <div className="flex bg-slate-100 p-1 rounded-2xl">
               {Object.values(EOSModel).map(m => (
-                <button key={m} onClick={() => setModel(m)} className={`flex-1 py-2 text-[10px] font-black rounded-xl transition-all ${model === m ? 'bg-white shadow-md text-teal-600' : 'text-slate-400'}`}>
-                  {m}
+                <button 
+                  key={m} 
+                  onClick={() => setModel(m)} 
+                  className={`flex-1 py-2 text-[10px] font-black rounded-xl transition-all ${model === m ? 'bg-white shadow-md text-teal-600' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  {m === 'Ideal Gas' ? 'IDEAL' : m.split(' ').pop()?.toUpperCase()}
                 </button>
               ))}
             </div>
 
             <div className="space-y-6 pt-6 border-t border-slate-50">
-              <UnitInput label="System Pressure" value={isSI ? p : p * 0.145} onChange={val => setP(isSI ? val : val / 0.145)} unit={isSI ? 'kPa' : 'psi'} onUnitChange={()=>{}} options={['kPa']} />
-              <UnitInput label="System Temp" value={isSI ? t - 273.15 : (t * 1.8 - 459.67)} onChange={val => setT(isSI ? val + 273.15 : (val + 459.67) * 5/9)} unit={isSI ? '°C' : '°F'} onUnitChange={()=>{}} options={['°C']} />
+              <UnitInput 
+                label="Pressure" 
+                value={isSI ? p : p * 0.145038} 
+                onChange={val => setP(isSI ? val : val / 0.145038)} 
+                unit={isSI ? 'kPa' : 'psi'} 
+                onUnitChange={()=>{}} 
+                options={isSI ? ['kPa'] : ['psi']} 
+              />
+              <UnitInput 
+                label="Temperature" 
+                value={isSI ? t - 273.15 : (t * 1.8 - 459.67)} 
+                onChange={val => setT(isSI ? val + 273.15 : (val + 459.67) * 5/9)} 
+                unit={isSI ? '°C' : '°F'} 
+                onUnitChange={()=>{}} 
+                options={isSI ? ['°C'] : ['°F']} 
+              />
             </div>
           </section>
 
           <section className="bg-indigo-900 p-10 rounded-[2.5rem] shadow-xl text-white">
-            <h4 className="text-[10px] font-black text-teal-400 uppercase tracking-[0.3em] mb-8 border-b border-white/5 pb-4">State Vectors</h4>
+            <h4 className="text-[10px] font-black text-teal-400 uppercase tracking-[0.3em] mb-8 border-b border-white/5 pb-4">State Assessment</h4>
             <div className="space-y-1">
-               <Row label="Current Phase" value={state.phase} />
-               <Row label="Comp. Factor (Z)" value={(state.z || 1).toFixed(4)} />
-               <Row label="Sp. Enthalpy" value={formatEnergy(state.h, units)} />
-               <Row label="Pressure P" value={formatPressure(state.P, units)} />
-               <Row label="Temperature T" value={formatTemp(state.T, units)} />
+               <Row label="Phase Condition" value={state.phase} />
+               <Row label="Z-Factor" value={(state.z || 1).toFixed(6)} />
+               <Row label="Sp. Volume (v)" value={state.v.toFixed(6)} />
+               <Row label="Enthalpy (h)" value={formatEnergy(state.h, units)} />
             </div>
           </section>
         </div>
@@ -82,11 +104,11 @@ const StateProperties: React.FC<{ units: UnitSystem }> = ({ units }) => {
           <div className="bg-white p-12 rounded-[3.5rem] border border-slate-200 shadow-sm flex flex-col min-h-[600px]">
              <div className="w-full mb-10 pb-6 border-b border-slate-100 flex justify-between items-center">
                 <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Molecular Visualization</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Particle Interaction</p>
                   <h4 className="text-2xl font-black text-slate-900 tracking-tighter mt-1 italic">{state.phase} Observation</h4>
                 </div>
                 <div className="flex gap-2">
-                   <div className="px-4 py-2 bg-indigo-50 text-indigo-700 rounded-full text-[9px] font-black uppercase tracking-widest border border-indigo-100">P: {state.P.toFixed(1)} kPa</div>
+                   <div className="px-4 py-2 bg-indigo-50 text-indigo-700 rounded-full text-[9px] font-black uppercase tracking-widest border border-indigo-100">Z: {state.z?.toFixed(3)}</div>
                 </div>
              </div>
              <div className="flex-1 rounded-[2.5rem] overflow-hidden">

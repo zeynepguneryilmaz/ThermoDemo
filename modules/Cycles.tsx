@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { calculateWaterState, calculateIdealGasState } from '../utils/thermo';
 import { SubstanceType, UnitSystem, ThermoState } from '../types';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import UnitInput from '../components/UnitInput';
 import { formatTemp } from '../utils/conversions';
 import { DeviceSchematic } from './VisualComponents';
@@ -45,17 +45,19 @@ const Cycles: React.FC<{ units: UnitSystem }> = ({ units }) => {
     stages.forEach((stage) => {
       let nextS: ThermoState;
       let w = 0, q = 0;
-      const Cp = substance === SubstanceType.WATER ? 1.87 : 1.005;
+      const Cp = substance === SubstanceType.WATER ? 4.18 : 1.005;
 
       if (stage.type === 'expansion' || stage.type === 'compression') {
         const P_exit = stage.targetP;
-        const T_isentropic = currentS.T * Math.pow(P_exit / currentS.P, 0.285);
-        const s_ideal = substance === SubstanceType.WATER ? calculateWaterState(P_exit, T_isentropic) : calculateIdealGasState(P_exit, T_isentropic);
-        const dh_ideal = s_ideal.h - currentS.h;
-        const dh_actual = stage.type === 'expansion' ? dh_ideal * stage.efficiency : dh_ideal / stage.efficiency;
-        const T_actual = currentS.T + dh_actual / Cp;
+        // Approximation for isentropic work
+        const w_s = currentS.v * (P_exit - currentS.P); 
+        const w_actual = stage.type === 'expansion' ? w_s * stage.efficiency : w_s / stage.efficiency;
+        
+        const dh = w_actual;
+        const T_actual = currentS.T + dh / Cp;
+        
         nextS = substance === SubstanceType.WATER ? calculateWaterState(P_exit, T_actual) : calculateIdealGasState(P_exit, T_actual);
-        w = -dh_actual;
+        w = -w_actual;
       } else {
         nextS = substance === SubstanceType.WATER ? calculateWaterState(stage.targetP, stage.targetT + 273.15) : calculateIdealGasState(stage.targetP, stage.targetT + 273.15);
         q = nextS.h - currentS.h;
@@ -69,15 +71,23 @@ const Cycles: React.FC<{ units: UnitSystem }> = ({ units }) => {
     });
 
     const thermalEfficiency = totalHeatIn > 0 ? totalWork / totalHeatIn : 0;
-    const chartData = states.map((s, i) => ({ s: s.s, T: isSI ? s.T - 273.15 : s.T * 1.8 - 459.67, name: s.stageName, idx: i + 1 }));
-    if (chartData.length > 1) chartData.push({ ...chartData[0], name: 'Return' });
+    const chartData = states.map((s, i) => ({ 
+      s: s.s, 
+      T: isSI ? s.T - 273.15 : s.T * 1.8 - 459.67, 
+      name: s.stageName, 
+      idx: i + 1 
+    }));
+    
+    // Close the loop for the chart
+    if (chartData.length > 1) {
+      chartData.push({ ...chartData[0], name: 'Cycle Closed' });
+    }
 
     return { states, totalWork, totalHeatIn, thermalEfficiency, chartData };
   }, [stages, initialP, initialT, substance, units]);
 
   return (
     <div className="space-y-10 animate-fade-in pb-24">
-      {/* Educational Header */}
       <section className="bg-indigo-900 p-12 rounded-[3rem] text-white shadow-xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-1/3 h-full bg-teal-500/10 pointer-events-none"></div>
         <div className="relative z-10 max-w-4xl">
@@ -86,8 +96,7 @@ const Cycles: React.FC<{ units: UnitSystem }> = ({ units }) => {
            </div>
            <h2 className="text-4xl font-black mb-4 tracking-tight uppercase italic">Power Cycle Architect</h2>
            <p className="text-slate-300 text-lg leading-relaxed font-medium">
-             {/* Fix: Escaped LaTeX-style curly braces to prevent "Cannot find name 'th'" error */}
-             Design industrial power plants (Rankine) or jet engines (Brayton) by chaining thermodynamic stages. Analyze the **Thermal Efficiency** {"($\\eta_{th}$)"} and visualize the cycle on a **Temperature-Entropy (T-s)** diagram.
+             Design industrial power plants by chaining thermodynamic stages. Chose between <strong>Water (Rankine)</strong> or <strong>Air (Brayton)</strong> fluids and optimize for the highest thermal efficiency.
            </p>
         </div>
       </section>
@@ -95,13 +104,19 @@ const Cycles: React.FC<{ units: UnitSystem }> = ({ units }) => {
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-10">
         <div className="xl:col-span-5 space-y-6">
            <div className="bg-white p-10 rounded-[3.5rem] border border-slate-200 shadow-sm flex flex-col h-[750px]">
-              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-10 italic">Stage Sequence Editor</h4>
+              <div className="flex justify-between items-center mb-10 italic">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Stage Sequence Editor</h4>
+                <select value={substance} onChange={e => setSubstance(e.target.value as any)} className="text-[10px] font-black bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 outline-none">
+                  <option value={SubstanceType.WATER}>WATER (RANKINE)</option>
+                  <option value={SubstanceType.AIR}>AIR (BRAYTON)</option>
+                </select>
+              </div>
               <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
                  <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
-                    <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Starting State 1</p>
+                    <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Starting State (Point 1)</p>
                     <div className="grid grid-cols-2 gap-4">
-                       <UnitInput label="Entry P" value={initialP} onChange={setInitialP} unit={isSI ? 'kPa' : 'psi'} onUnitChange={()=>{}} options={['kPa']} />
-                       <UnitInput label="Entry T" value={initialT} onChange={setInitialT} unit={isSI ? '°C' : '°F'} onUnitChange={()=>{}} options={['°C']} />
+                       <UnitInput label="Initial P" value={initialP} onChange={setInitialP} unit={isSI ? 'kPa' : 'psi'} onUnitChange={()=>{}} options={['kPa']} />
+                       <UnitInput label="Initial T" value={initialT} onChange={setInitialT} unit={isSI ? '°C' : '°F'} onUnitChange={()=>{}} options={['°C']} />
                     </div>
                  </div>
                  {stages.map((stage, idx) => (
@@ -109,10 +124,10 @@ const Cycles: React.FC<{ units: UnitSystem }> = ({ units }) => {
                        <div className="absolute -left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-indigo-900 text-white flex items-center justify-center text-[10px] font-black shadow-lg z-10">{idx + 2}</div>
                        <div className="flex justify-between items-center mb-4">
                           <span className="text-[10px] font-black uppercase text-slate-900 tracking-widest">{stage.name}</span>
-                          <span className="text-[9px] font-bold text-slate-400 uppercase">Stage Exit</span>
+                          <span className="text-[9px] font-bold text-slate-400 uppercase">Constraint</span>
                        </div>
                        <div className="grid grid-cols-2 gap-4">
-                          <UnitInput label="Exit P" value={stage.targetP} onChange={v => {
+                          <UnitInput label="Target P" value={stage.targetP} onChange={v => {
                             const newStages = [...stages];
                             newStages[idx].targetP = v;
                             setStages(newStages);
@@ -120,7 +135,7 @@ const Cycles: React.FC<{ units: UnitSystem }> = ({ units }) => {
                           {(stage.type === 'expansion' || stage.type === 'compression') ? (
                              <div className="space-y-2">
                                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Efficiency η</label>
-                                <input type="range" min="0.1" max="1" step="0.01" value={stage.efficiency} onChange={e => {
+                                <input type="range" min="0.5" max="1" step="0.01" value={stage.efficiency} onChange={e => {
                                   const newStages = [...stages];
                                   newStages[idx].efficiency = Number(e.target.value);
                                   setStages(newStages);
@@ -128,7 +143,7 @@ const Cycles: React.FC<{ units: UnitSystem }> = ({ units }) => {
                                 <div className="text-[10px] font-black text-indigo-600 text-right">{Math.round(stage.efficiency*100)}%</div>
                              </div>
                           ) : (
-                             <UnitInput label="Exit T" value={stage.targetT} onChange={v => {
+                             <UnitInput label="Target T" value={stage.targetT} onChange={v => {
                                const newStages = [...stages];
                                newStages[idx].targetT = v;
                                setStages(newStages);
@@ -162,9 +177,8 @@ const Cycles: React.FC<{ units: UnitSystem }> = ({ units }) => {
 
            <div className="bg-slate-900 p-12 rounded-[4rem] shadow-2xl text-white">
               <div className="flex justify-between items-center mb-10 border-b border-white/5 pb-6">
-                 <h5 className="text-[10px] font-black text-teal-400 uppercase tracking-widest">Power Generation Audit</h5>
-                 {/* Fix: Escaped LaTeX-style curly braces to prevent "Cannot find name 'th'" error */}
-                 <p className="text-2xl font-black italic">{"$\\eta_{th} = "}{(cycleResults.thermalEfficiency * 100).toFixed(1)}{"\\%$"}</p>
+                 <h5 className="text-[10px] font-black text-teal-400 uppercase tracking-widest">Efficiency Audit</h5>
+                 <p className="text-4xl font-black italic tracking-tighter">η = {(cycleResults.thermalEfficiency * 100).toFixed(1)}%</p>
               </div>
               <div className="flex flex-wrap gap-10 justify-center">
                  {stages.map((s, i) => (
