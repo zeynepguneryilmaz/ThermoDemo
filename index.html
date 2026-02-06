@@ -1,0 +1,127 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ThermoDemo - Interactive Thermodynamics</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script type="importmap">
+    {
+      "imports": {
+        "react/": "https://esm.sh/react@^19.2.4/",
+        "react": "https://esm.sh/react@^19.2.4",
+        "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+        "recharts": "https://esm.sh/recharts@^3.7.0"
+      }
+    }
+    </script>
+    <style>
+      :root {
+        --brand-primary: #1e3a8a; /* Sapphire */
+        --brand-secondary: #0d9488; /* Teal */
+        --bg-main: #f8fafc;
+      }
+      body { 
+        font-family: 'Outfit', sans-serif; 
+        background-color: var(--bg-main);
+        color: #0f172a;
+      }
+      .font-mono { font-family: 'JetBrains Mono', monospace; }
+      
+      /* Smooth animations */
+      @keyframes fadeInScale { 
+        from { opacity: 0; transform: scale(0.99) translateY(4px); } 
+        to { opacity: 1; transform: scale(1) translateY(0); } 
+      }
+      .animate-fade-in { animation: fadeInScale 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+      
+      @keyframes flow-horizontal {
+        0% { transform: translateX(-20px); opacity: 0; }
+        50% { opacity: 1; }
+        100% { transform: translateX(20px); opacity: 0; }
+      }
+      .animate-flow-horizontal { animation: flow-horizontal 2s infinite linear; }
+
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar { width: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+      ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+      /* Visual Affordance Classes */
+      .card-elevated {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 1.5rem;
+        box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);
+        transition: all 0.3s ease;
+      }
+      .card-elevated:hover {
+        border-color: var(--brand-secondary);
+        box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+        transform: translateY(-2px);
+      }
+      
+      .btn-primary {
+        background-color: var(--brand-primary);
+        color: white;
+        transition: all 0.2s ease;
+        box-shadow: 0 4px 6px -1px rgba(30, 58, 138, 0.2);
+      }
+      .btn-primary:hover {
+        background-color: #1e40af;
+        transform: translateY(-1px);
+        box-shadow: 0 10px 15px -3px rgba(30, 58, 138, 0.3);
+      }
+      .btn-primary:active {
+        transform: scale(0.96);
+      }
+
+      .btn-secondary {
+        background-color: white;
+        border: 1px solid #e2e8f0;
+        color: #475569;
+        transition: all 0.2s ease;
+      }
+      .btn-secondary:hover {
+        border-color: var(--brand-secondary);
+        color: var(--brand-secondary);
+        background-color: #f0fdfa;
+      }
+      
+      /* Result Row Styles for Consistency */
+      .data-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 0;
+        border-bottom: 1px solid #f1f5f9;
+        transition: background-color 0.2s ease;
+      }
+      .data-row:hover {
+        background-color: #f8fafc;
+      }
+      .data-label {
+        font-size: 0.75rem;
+        font-weight: 800;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .data-value {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 1.125rem;
+        font-weight: 700;
+        color: var(--brand-primary);
+      }
+    </style>
+  <link rel="stylesheet" href="/index.css">
+</head>
+  <body class="antialiased overflow-x-hidden">
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>

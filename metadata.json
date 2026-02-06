@@ -1,0 +1,5 @@
+{
+  "name": "ThermoDemo",
+  "description": "An interactive thermodynamics educational suite for visualizing properties, laws, cycles, and phase equilibrium.",
+  "requestFramePermissions": []
+}
